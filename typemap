@@ -1,0 +1,2 @@
+Mode_t              T_NV
+POSIX::RT::Semaphore    T_PTROBJ
