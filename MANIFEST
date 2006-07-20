@@ -5,9 +5,18 @@ ppport.h
 README
 Semaphore.pm
 Semaphore.xs
-t/named.t
-t/named-thr.t
-t/unnamed.t
-t/unnamed-thr.t
-t/use.t
 typemap
+t/util.pl
+t/01util.t
+t/unnamed.t
+t/can.t
+t/named.t
+t/use_basic.t
+t/threaded.t
+t/pod.t
+t/ctors.t
+t/use_consts.t
+t/invalid.t
+t/fork-inherit.t
+t/fork-reopen.t
+META.yml                                 Module meta-data (added by MakeMaker)

@@ -1,55 +1,73 @@
 package POSIX::RT::Semaphore;
+#============================================================================#
 
 use 5.008;
-BEGIN {
-  $VERSION = '0.01';
-  require XSLoader;
-  XSLoader::load(__PACKAGE__, $VERSION);
+use strict;
+our ($VERSION, @EXPORT_OK);
 
-  @EXPORT_OK = qw(SEM_NSEMS_MAX SEM_VALUE_MAX);
+BEGIN {
+	$VERSION = '0.02';
+	require XSLoader;
+	XSLoader::load(__PACKAGE__, $VERSION);
+
+	# -- awkwardness to support threaded
+	#    operation
+	if ($INC{'threads.pm'}) {
+		require threads::shared;
+		no warnings 'redefine';
+
+		for ('Unnamed::init', 'Named::open') {
+			no strict 'refs';
+
+			my $sym = __PACKAGE__ . "::$_";
+			my $ctor = \&{$sym};
+			*{$sym} = sub {
+				my $psem = &$ctor;
+				&threads::shared::share($psem) if defined $psem;
+				$psem;
+			}
+		}
+
+		my $dtor = \&POSIX::RT::Semaphore::_base::DESTROY;
+		*POSIX::RT::Semaphore::_base::DESTROY = sub {
+			lock($_[0]);
+			return unless threads::shared::_refcnt($_[0]) == 1;
+			&$dtor;
+		};
+	} # -- if ($INC{'threads.pm'})
+
 }
 
 use strict;
 use warnings;
+
+@EXPORT_OK = qw(SEM_NSEMS_MAX SEM_VALUE_MAX SIZEOF_SEM_T);
+
+#
+# -- Internal methods
+#
 
 sub import {
   require Exporter;
   goto &Exporter::import;
 }
 
-INIT {
+#
+# -- Public methods
+#
 
-  # -- threaded?
-  #
-  if ($threads::shared::threads_shared) {
-    no warnings 'redefine';
+sub init {
+	shift @_;
+	return POSIX::RT::Semaphore::Unnamed->init(@_);
+}
 
-    # --> ensure sem object is /shared/
-    #
-    foreach my $glob (*init, *open) {
-      my $code = *{$glob}{CODE};
-      next unless defined $code;
-      *{$glob} = sub {
-        my $sem;
-        $sem = &$code;
-        threads::shared::share($sem) if defined $sem;
-        $sem;
-      };
-    }
-
-    # --> ensure destructor invocation only upon DESTROY of final ref
-    #
-    my $dtor = \&DESTROY;
-    *DESTROY = sub {
-      return unless @_ and threads::shared::_refcnt($_[0]) == 1;
-      &$dtor;
-    };
-
-  } # -- if $threads::shared::threads_shared
-
-} # -- INIT 
+sub open {
+	shift @_;
+	return POSIX::RT::Semaphore::Named->open(@_);
+}
 
 1;
+
 __END__
 
 =head1 NAME
@@ -58,12 +76,10 @@ POSIX::RT::Semaphore - Perl interface to POSIX.1b semaphores
 
 =head1 SYNOPSIS
 
-  use threads;
-  use threads::shared;
   use POSIX::RT::Semaphore;
   use Fcntl;            # O_CREAT, O_EXCL for named semaphore creation
 
-  ## unnamed semaphore, inital value 1
+  ## unnamed semaphore, initial value 1
   $sem = POSIX::RT::Semaphore->init(0, 1);
 
   ## named semaphore, initial value 1
@@ -84,91 +100,80 @@ POSIX::RT::Semaphore - Perl interface to POSIX.1b semaphores
 
 =head1 DESCRIPTION
 
-POSIX::RT::Semaphore provides a Perl interface to POSIX 1b Realtime
-semaphores, as supported by your system.
+POSIX::RT::Semaphore provides an object-oriented Perl interface to POSIX.1b
+Realtime semaphores, as supported by your system.  A POSIX semaphore (herein:
+psem) is a high-performance, persistent synchronization device.
 
-POSIX::RT::Semaphore objects are handles to underlying system resources, much
-as IO::Handle objects are handles to underlying system resources.
+I<Unnamed> psems are typically used for synchronization between the threads
+of a single process, or between a set of related processes which have
+inherited the psem from a common ancestor.  I<Named> psems are typically
+used for interprocess synchronization, but may also serve interthreaded
+designs.
 
-I<N.B.>: L<threads::shared|threads::shared> I<must> be L<use|perlfunc/use>d
-before POSIX::RT::Semaphore is loaded, if any semaphore objects will be
-visible to more than one thread.
+=head1 CLASS METHODS
 
-=head1 METHODS
-
-All functions return the undefined value on failure (setting $!), and true on
-success.  A return value of zero is mapped to the true string "0 but true".
-
-=head2 UNNAMED SEMAPHORES
+Unless otherwise specified, all methods return the undefined value on
+failure (setting $!), and a true value on success.
 
 =over 4
 
 =item init PSHARED, VALUE
 
-The C<init> class method returns a new, I<unnamed> semaphore object,
-initialized to value VALUE.  If PSHARED is non-zero, the sem is shared between
-processes (but see CAVEATS, below).
+A convenience for the POSIX::RT::Semaphore::Unnamed-E<gt>init class method.
 
-Unnamed sems are never implicitly destroyed -- the memory for the
-POSIX::RT::Semaphore object is deallocated during DESTROY, but the underlying
-system sem remains unless L</destroy> is invoked.
+Return a new POSIX::RT::Semaphore::Unnamed object, initialized to VALUE.  If
+PSHARED is non-zero, the psem may be shared between processes (subject to
+implementation CAVEATS, below).
 
-=item destroy
-
-Invalidate the unnamed sem; future operations on it will fail.  This function
-fails if other processes are blocked on the underlying semaphore.
-
-Note that this is distinct from Perl's DESTROY.
-
-=back
-
-=head2 NAMED SEMAPHORES
-
-=over 4
+Unnamed semaphores persist until explicitly released by calling their
+C<destroy> method.
 
 =item open NAME
 
-=item open NAME, OFLAG
+=item open NAME, OFLAGS
 
-=item open NAME, OFLAG, MODE, VALUE
+=item open NAME, OFLAGS, MODE
 
-The C<open> class methods creates a new POSIX::RT::Semaphore object referring
-to the underlying I<named> semaphore NAME.  Other processes may attempt to
-access the same sem by that NAME.
+=item open NAME, OFLAGS, MODE, VALUE
 
-OFLAG may specify O_CREAT and O_EXCL, imported from the L<Fcntl|Fcntl> module,
-to create a new system semaphore.  In these cases, a filesystem-like MODE and
-initial VALUE are needed.
+A convenience for the POSIX::RT::Semaphore::Named-E<gt>open class method.
 
-=item close
+Return a new POSIX::RT::Semaphore::Named object, referring to the underlying
+semaphore NAME.  Other processes may attempt to access the same psem by
+that NAME.
 
-Close the named semaphore for the calling process; future operations on the
-object will fail.  The underlying sem, however, is not invalidated.
+OFLAGS may specify O_CREAT and O_EXCL, imported from the L<Fcntl|Fcntl>
+module, to create a new system semaphore.  A filesystem-like MODE,
+defaulting to 0666, and an initial VALUE, defaulting to 1, may be supplied.
 
-If not called explicitly, the semaphore is closed when its last reference goes
-away.
+Named semaphores persist until explicitly removed by a call to the C<unlink>
+class method.  A subsequent C<open> of that NAME will return a new system
+psem.
 
-=item unlink
+=item unlink NAME
 
-This class method removes the named semaphore.  Analogous to unlinking a file,
-this does not invalidate already open sems.
+Remove the named semaphore identified by NAME.  Analogous to unlinking a
+file on UNIX-like systems, removal does not invalidate psems already held
+open by other processes.
 
 =back
 
-=head2 GENERAL SEMAPHORE USE
+=head1 SEMAPHORE OBJECT METHODS
+
+=head2 Common Methods
 
 =over 4
 
 =item getvalue
 
-Returns the current value of the semaphore, or, if the value is zero, a
+Return the current value of the semaphore, or, if the value is zero, a
 negative number whose absolute value is the number of currently waiting
 processes.
 
 =item name
 
-This method returns the object's associated name as set by L</open>, or undef
-if created by L</init>.
+Return the object's associated name as set by L</open>, or undef if created
+by L</init>.  Deprecated for unnamed psems.
 
 =item post
 
@@ -177,8 +182,10 @@ counter value is greater than zero.
 
 =item timedwait ABSOLUTE_TIMEOUT
 
-Attempt to atomically decrement the semaphore, waiting until ABSOLUTE_TIMEOUT
-before failing.
+Attempt atomically to decrement the semaphore, waiting until
+ABSOLUTE_TIMEOUT before failing.
+
+  $sem->timedwait(time() + .5);  # wait half a second
 
 =item trywait
 
@@ -191,52 +198,83 @@ Atomically decrement the semaphore, blocking indefinitely until successful.
 
 =back
 
+=head2 POSIX::RT::Semaphore::Unnamed Methods
+
+=over 4
+
+=item destroy
+
+Invalidate the underlying semaphore.  Subsequent method calls on the psem
+will simply croak.  Operations on a destroyed psem by another process, one
+which has inherited the now-defunct semaphore, for example, are undefined.
+
+This method may fail if any processes is blocked on the underlying
+semaphore.
+
+Note that this is distinct from Perl's DESTROY.
+
+=back
+
+=head2 POSIX::RT::Semaphore::Named Methods
+
+=over 4
+
+=item close
+
+Close the named semaphore for the calling process; subsequent method calls
+on the object will simply croak.  The underlying psem, however, is not
+removed until a call to C<POSIX::RT::Semaphore->unlink()>, nor does the call
+to C<close> affect any other process' connection to the same semaphore.
+
+This method is called implicitly when the last object representing
+a particular semaphore in a process is C<DESTROY>ed.
+
+=back
+
 =head1 CAVEATS
 
 =over 4
 
+=item PERSISTENCE
+
+POSIX semaphores are system constructs existing apart from the processes
+that use them.  For named psems in particular, this means that the value of
+a newly opened semaphore may not be that VALUE specified in the L</open>
+call. 
+
+Depending on the application, it may be advisable to L</unlink> psems before
+opening them, or to specify O_EXCL, to avoid opening a pre-existing psem.  
+
 =item ENOSYS AND WORSE
 
-Implementation details vary; B<consult your system documentation>.
+Implementation details vary; consult your system documentation.
 
-Interprocess semaphores may not be supported, for example, causing L</open> or
-L</init> with a positive PSHARED value to return undef and set $! to "Function
-not implemented".  Worse, PSHARED might mean "inherited across fork"
-or "shared via shared memory."  In the latter case, you're out of luck, as
-this module provides no means of supplying pre-shared memory to the L</init>
-constructor.
+Interprocess semaphore support varies.  In the simplest cases,
+L</open> may simply return undef, setting $! to ENOSYS, as might L</init>
+with a non-zero PSHARED value.
 
-Named semaphore semantics, specifically their relationship to filesystem
+More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant 
+psem might be copied, rather than shared, across processes.  Some systems
+require PSHARED psems to be initialized in user-supplied shared memory, for
+which POSIX::RT::Semaphore currently has no support.
+
+Semaphore name semantics, specifically their relationship to filesystem
 entities, is implementation defined.  POSIX conservatives will use only
 pathname-like names with a single, leading slash (e.g., "/my_sem").
 
-L</getvalue> may not support the special negative semantics.  B<consult your
-system documentation>.
-
-=item PERL ITHREADS
-
-Presently under L<threads|threads>, objects are DESTROYed at every applicable
-scope clearance in every thread, whether they are shared or unshared (that is,
-copied) across threads.  This means that an object merely visible to a thread
-will suffer destruction when that thread finishes, even if the object is alive
-and well in other threads.
-
-When L<threads::shared|threads::shared> is detected, POSIX::RT::Semaphore
-plays tricks to ensure that its objects are DESTROYed only once, and then
-only when appropriate.  See source for details.
+L</getvalue> may not support the special negative semantics, and
+L</timedwait> may not be supported at all.
 
 =item MISC
 
 wait/post are known by many names: down/up, acquire/release, P/V, and
-lock/unlock (not to be confused with Perl's L<lock|perlfunc/lock> keyword) to
-name a few.
+lock/unlock to name a few.
 
 =back
 
 =head1 TODO
 
-Attempted compilation in multiple environments (currently only
-linux/LinuxThreads tested) and testing, testing, testing.
+Extend init() to support shared memory objects.
 
 =head1 SEE ALSO
 
@@ -250,7 +288,7 @@ Please report bugs to E<lt>mjp-perl AT pilcrow.madison.wi.usE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2003 by Michael J. Pomraning
+Copyright 2006 by Michael J. Pomraning
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

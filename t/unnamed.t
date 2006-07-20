@@ -1,35 +1,57 @@
-# UNNAMED (anonymous) semaphore tests
+# _unnamed_ semaphore tests
 
 #########################
 
-use Test::More tests => 12;
-use POSIX::RT::Semaphore;
+use Test::More tests => 17;
+use Errno;
+BEGIN { require 't/util.pl'; }
 use strict;
 
-ok(1, "use ok");
-
-my $sem = POSIX::RT::Semaphore->init(0, 1);
+BEGIN { use_ok('POSIX::RT::Semaphore'); }
 
 SKIP: {
+	my $sem;
 
-  skip "sem_init(): $!", 10 unless $sem;
+	# -- sem_init ENOSYS?
+	#
+	skip "sem_init ENOSYS", 14
+		unless is_implemented {
+			$sem = POSIX::RT::Semaphore->init(0, 1);
+		};
+	ok($sem, "sem_init(sem_t *, 0, 1)");
+	isa_ok($sem, "POSIX::RT::Semaphore::Unnamed");
 
-  ok($sem, "unnamed ctor");
-  ok(!defined($sem->name), "nameless");
-  ok($sem->getvalue() == 1, "getvalue == 1");
-  ok($sem->wait(), "wait");
-  ok($sem->getvalue() == 0, "getvalue == 0");
-  ok(!defined($sem->trywait), "trywait EAGAIN");
-  ok($sem->post && $sem->post, "post");
-  ok($sem->getvalue == 2, "getvalue == 2");
-  ok($sem->trywait, "trywait succeeds");
-  ok($sem->getvalue == 1, "getvalue == 1");
-  ok($sem->destroy, "destroy");
+	# -- ->name() extension (deprecated!)
+	ok(! defined($sem->name), "name() (deprecated) undefined");
 
+	# -- Basic methods: wait, post, getvalue, trywait
+	#
+	ok($sem->getvalue() == 1, "getvalue() -> 1");
+	ok(zero_but_true($sem->wait), "wait() -> zero-but-true");
+	ok($sem->getvalue() == 0, "getvalue() -> 0");
+	$! = 0;
+	ok((!defined($sem->trywait) and $!{EAGAIN}), "trywait EAGAIN");
+	ok(zero_but_true($sem->post), "post() -> zero-but-true");
+	ok(zero_but_true($sem->post), "post() -> zero-but-true");
+	ok($sem->getvalue() == 2, "getvalue() -> 2");
+  	ok(zero_but_true($sem->trywait), "trywait() -> zero-but-true");
+	ok($sem->getvalue == 1, "getvalue() == 1");
+
+	# -- Maybe supported: sem_timedwait
+	#
+    SKIP: {
+		my $r;
+		skip "sem_timedwait ENOSYS", 3
+		unless is_implemented { $r = $sem->timedwait(time() + 2); };
+		ok(zero_but_true($r), "timedwait() -> zero-but-true");
+		ok($sem->getvalue == 0, "getvalue() == 0");
+
+		$! = 0;
+		$r = $sem->timedwait(time()  + 2);
+		ok(!defined($r) && $!{ETIMEDOUT}, "timedwait ETIMEDOUT");
+	}
+
+	# -- sem_destroy
+	#
+	ok(zero_but_true($sem->destroy), "destroy() -> zero_but_true");
 }
-
-#########################
-
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
-

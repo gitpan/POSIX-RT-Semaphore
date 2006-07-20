@@ -1,5 +1,21 @@
 Revision history for Perl extension POSIX::RT::Semaphore.
 
+ER := Eric Rybski <rybskej#yahoo_com>
+
+0.02  Thu Jul 19 00:45:52 2006
+	- version 0.2
+	- restructure named and unnamed psems as classes with a common virtual
+	  ancestor class.  Calling the "wrong" deallocator (e.g.,
+	  $named_sem->destroy) still croaks, but now b/c the requested method is
+	  not found, rather than as a safety precaution.
+	- getvalue() returns undef on failure
+	- SIZEOF_SEM_T (undocumented)
+	- Semaphore.xs: check _POSIX_TIMEOUTS for timedwait() and __CYGWIN__
+	  for unlink() (thx ER).  General legibility improvements.
+	- Semaphore.pm: POD cleanup
+	- t/:  corrected *cough* boolean inversion in tests (thx ER).
+	  Substantially expanded test suite.
+
 0.01  Sun Oct 19 20:02:08 2003
 	- original version; created by h2xs 1.22 with options
 		-cn POSIX::RT::Semaphore
