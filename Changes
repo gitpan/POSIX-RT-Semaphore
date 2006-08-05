@@ -2,6 +2,20 @@ Revision history for Perl extension POSIX::RT::Semaphore.
 
 ER := Eric Rybski <rybskej#yahoo_com>
 
+0.03 Sat Aug 5 13:14:20 2006
+	- version 0.03
+	- Anonymous sems allocated in anon, shared memory if possible
+	  (MAP_SHARED or mmap /dev/zero).
+	- Semaphore.xs: allow sem_timedwait under __CYGWIN__ (thx ER).
+	  newCONSTSUB implementation of exportables, conditionally including
+	  SEM_NAME_LEN (Darwin) and SEM_NAME_MAX (Tru64, others).
+	- Semaphore.pm: dynamically build @EXPORT_OK.  POD documents constants,
+	  attempted anon shared allocation of unnamed sems.
+	- t/: use_const.t modified to drop "no_macro" croak check.  fork-inherit
+	  tests for both named and unnamed sems.  01util.t modified to sidestep
+	  older Test::More installations.  ctors.t works around cygwin
+	  implementation.
+
 0.02  Thu Jul 19 00:45:52 2006
 	- version 0.2
 	- restructure named and unnamed psems as classes with a common virtual

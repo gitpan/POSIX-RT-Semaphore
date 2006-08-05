@@ -31,8 +31,9 @@ sub checkUnnamed($$) {
 
 sub checkNamed($$) {
 	my ($eval, $value) = @_;
-
 	local $! = 0;
+
+	my $o_creat = ($eval =~ /\bO_CREAT\b/);
 	my $sem = eval $eval;
 
 	SKIP: {
@@ -40,7 +41,13 @@ sub checkNamed($$) {
 			skip "'$eval' unsupported", 4;
 		}
 
-		ok($sem, "$eval");
+		if (!$sem and !$o_creat and $^O eq 'cygwin') {
+			# 2006-08-05 / mjp
+			# cygwin sem_close()s destroy underlying semaphores?
+			skip "Cygwin named psems not persistent", 4;
+		}
+
+		ok($sem, "$eval: $!");
 		isa_ok($sem, "POSIX::RT::Semaphore::Named");
 		ok($sem->getvalue == $value, "getvalue() == $value");
 		ok($sem->close, "close()");

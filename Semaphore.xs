@@ -5,13 +5,30 @@
 
 #if !defined(_POSIX_SEMAPHORES)
 #  error "POSIX::RT::Semaphore requires _POSIX_SEMAPHORES support."
-#endif /* !defined(_POSIX_SEMAPHORES) */
+#endif
+
+#ifdef HAS_MMAP
+#  include <sys/mman.h>
+#  if defined(MAP_ANON) && !defined(MAP_ANONYMOUS)
+#    define MAP_ANONYMOUS     MAP_ANON
+#  endif
+#  ifndef MAP_ANONYMOUS
+#    include <fcntl.h> /* open(..., O_RDWR) */
+#  endif
+#  ifndef MAP_HASSEMAPHORE
+#    define MAP_HASSEMAPHORE  0
+#  endif
+#  ifndef MAP_FAILED
+#    define MAP_FAILED        ((void *)-1)
+#  endif
+#endif
+
 
 #include <semaphore.h>
-#include <errno.h>      /* ENOSYS */
-#ifdef _POSIX_TIMEOUTS
-#include <time.h>
-#endif /* _POSIX_TIMEOUTS */
+#  include <errno.h>      /* ENOSYS */
+#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
+#  include <time.h>
+#endif
 
 typedef int SysRet;
 
@@ -22,19 +39,47 @@ typedef struct PSem_C {
 typedef POSIX__RT__Semaphore___base POSIX__RT__Semaphore__Named;
 typedef POSIX__RT__Semaphore___base POSIX__RT__Semaphore__Unnamed;
 
-static struct PSem_C *
-_psem_create(const char *name) {
-	struct PSem_C *psem;
-	Newz(0, psem, 1, struct PSem_C);
-	if (name) psem->name = savepv(name);
-	return psem;
+/* _alloc_sem()
+ * 
+ * Return a new sem_t in shared memory (maybe), or NULL (_not_ SEM_FAILED)
+ * on failure.
+ */
+static sem_t *
+_alloc_sem(void) {
+	sem_t *sem = NULL;
+#ifdef HAS_MMAP
+	int fd = -1;
+	int prot_flags = PROT_READ|PROT_WRITE;
+	int map_flags = MAP_SHARED|MAP_HASSEMAPHORE;
+
+#  ifdef MAP_ANONYMOUS
+	map_flags |= MAP_ANONYMOUS;
+	sem = (sem_t *)mmap(NULL, sizeof(sem_t), prot_flags, map_flags, fd, 0);
+#  else
+	if ((fd = open("/dev/zero", O_RDWR)) != -1) {
+		sem = (sem_t *)mmap(NULL, sizeof(sem_t), prot_flags, map_flags, fd, 0);
+		close(fd);
+	}
+#  endif /* MAP_ANONYMOUS */
+#else
+	Newz(0, sem, 1, sem_t);
+#endif /* HAS_MMAP */
+
+	return sem;
 }
 
-static int
-no_macro(char *s)
+/* _dealloc_sem
+ *
+ * Free a sem_t we allocated.
+ */
+static void
+_dealloc_sem(sem_t *sem)
 {
-  croak("Your vendor has not defined the POSIX::RT::Semaphore macro %s", s);
-  return -1;
+#ifdef HAS_MMAP
+	munmap((void *)sem, sizeof(sem_t));
+#else
+	Safefree(sem);
+#endif
 }
 
 static int
@@ -62,6 +107,7 @@ BOOT:
 		"POSIX::RT::Semaphore::Named::ISA",
 		"POSIX::RT::Semaphore::Unnamed::ISA",
 	};
+	HV *stash;
 	int i;
 
 	for (i = 0; i < sizeof(pkgs)/sizeof(*pkgs); i++) {
@@ -69,38 +115,23 @@ BOOT:
 		isa = get_av(pkgs[i], TRUE);
 		av_push(isa, newSVpv("POSIX::RT::Semaphore::_base", 0));
 	}
-}
 
-PROTOTYPES: ENABLE
-int
-psem_SEM_VALUE_MAX()
-    CODE:
+	stash = gv_stashpvn("POSIX::RT::Semaphore", 20, TRUE);
+
+	newCONSTSUB(stash, "SIZEOF_SEM_T", newSViv(sizeof(sem_t)));
 #ifdef _POSIX_SEM_VALUE_MAX
-    RETVAL = _POSIX_SEM_VALUE_MAX;
-#else
-    RETVAL = no_macro("SEM_VALUE_MAX");
+	newCONSTSUB(stash, "SEM_VALUE_MAX", newSViv(_POSIX_SEM_VALUE_MAX));
 #endif
-    OUTPUT:
-    RETVAL
-
-int
-psem_SEM_NSEMS_MAX()
-    CODE:
 #ifdef _POSIX_SEM_NSEMS_MAX
-    RETVAL = _POSIX_SEM_NSEMS_MAX;
-#else
-    RETVAL = no_macro("SEM_NSEMS_MAX");
+	newCONSTSUB(stash, "SEM_NSEMS_MAX", newSViv(_POSIX_SEM_NSEMS_MAX));
 #endif
-    OUTPUT:
-    RETVAL
-
-unsigned int
-psem_SIZEOF_SEM_T()
-	CODE:
-	RETVAL = sizeof(sem_t);
-
-	OUTPUT:
-	RETVAL
+#ifdef SEM_NAME_LEN
+	newCONSTSUB(stash, "SEM_NAME_LEN", newSViv(SEM_NAME_LEN));
+#endif
+#ifdef SEM_NAME_MAX
+	newCONSTSUB(stash, "SEM_NAME_MAX", newSViv(SEM_NAME_MAX));
+#endif
+}
 
 SysRet
 psem_unlink(pkg = "POSIX::RT::Semaphore", path)
@@ -125,12 +156,13 @@ psem_DESTROY(self)
 	POSIX::RT::Semaphore::_base    self
 
 	CODE:
-	if (self->name && sem_valid(self->sem)) {
-		if (sem_close(self->sem)) {
-			croak("Error closing named semaphore during destruction\n");
-			return;
-		}
+	if (self->name) {
+		if (sem_valid(self->sem))
+			(void)sem_close(self->sem);
 		Safefree(self->name);
+	} else {
+		if (sem_valid(self->sem))
+			_dealloc_sem(self->sem);
 	}
 	Safefree(self);
 
@@ -162,13 +194,13 @@ psem_timedwait(self, timeout)
 	NV                             timeout
 
 	PREINIT:
-#ifdef _POSIX_TIMEOUTS
+#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
 	struct timespec ts;
-#endif /* _POSIX_TIMEOUTS */
+#endif
 
 	CODE:
 	PRECOND_valid_psem("timedwait", self);
-#ifdef _POSIX_TIMEOUTS
+#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
 	if (timeout < 0.0)
 		timeout = 0.0;
 	ts.tv_sec  = (long)timeout;
@@ -177,7 +209,7 @@ psem_timedwait(self, timeout)
 	RETVAL = sem_timedwait(self->sem, (const struct timespec *)&ts);
 #else
 	RETVAL = function_not_implemented();
-#endif /* !_POSIX_TIMEOUTS */
+#endif
 
 	OUTPUT:
 	RETVAL
@@ -230,13 +262,18 @@ psem_init(pkg = "POSIX::RT::Semaphore::Unnamed", pshared = 0, value = 1)
 	unsigned            value
 
 	CODE:
-	RETVAL = _psem_create(NULL);
-	Newz(0, RETVAL->sem, 1, sem_t);
-	if (sem_init(RETVAL->sem, pshared, value) == -1) {
+	Newz(0, RETVAL, 1, struct PSem_C);
+	RETVAL->sem = _alloc_sem();
+	if (NULL == RETVAL->sem) {
 		Safefree(RETVAL);
-		XSRETURN_UNDEF;
+		croak("sem_init: failed to allocate semaphore");
 	}
-	#warn("xs.sem_init 0x%x (sem: 0x%x) thr_ct %d\n", RETVAL, RETVAL->sem, RETVAL->thr_ct);
+	if (sem_init(RETVAL->sem, pshared, value) == -1) {
+		_dealloc_sem(RETVAL->sem);
+		Safefree(RETVAL);
+		RETVAL = NULL;
+	}
+	#warn("xs.sem_init 0x%x (sem: 0x%x)\n", RETVAL, RETVAL->sem);
 
 	OUTPUT:
 	RETVAL
@@ -247,9 +284,10 @@ psem_destroy(self)
 
 	CODE:
 	PRECOND_valid_psem("destroy", self);
-	RETVAL = sem_destroy(self->sem);
-	Safefree(self->sem);
-	self->sem = SEM_FAILED;
+	if (0 == (RETVAL = sem_destroy(self->sem))) {
+		_dealloc_sem(self->sem);
+		self->sem = NULL;
+	}
 
 	OUTPUT:
 	RETVAL
@@ -275,9 +313,10 @@ psem_open(pkg = "POSIX::RT::Semaphore::Named", name, flags = 0, mode = 0666, val
 		XSRETURN_UNDEF;
 	}
 
-	RETVAL = _psem_create(name);
+	Newz(0, RETVAL, 1, struct PSem_C);
 	RETVAL->sem = sem;
-	#warn("xs.sem_open 0x%x (sem: 0x%x) thr_ct %d\n", RETVAL, RETVAL->sem, RETVAL->thr_ct);
+	RETVAL->name = savepv(name);
+	#warn("xs.sem_open 0x%x (sem: 0x%x)\n", RETVAL, RETVAL->sem);
 
 	OUTPUT:
 	RETVAL
@@ -289,7 +328,7 @@ psem_close(self)
 	CODE:
 	PRECOND_valid_psem("close", self);
 	RETVAL = sem_close(self->sem);
-	self->sem = SEM_FAILED;
+	self->sem = NULL;
 
 	OUTPUT:
 	RETVAL

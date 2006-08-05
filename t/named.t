@@ -27,7 +27,7 @@ SKIP: {
 
 	# -- ->name() method
 	#
-	ok($sem->name eq SEMNAME, "name() eq " . SEMNAME);
+	ok($sem->name eq SEMNAME, "name() (" .$sem->name .") eq " . SEMNAME);
 
 	# -- Basic methods: wait, post, getvalue, trywait
 	#

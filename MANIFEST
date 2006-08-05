@@ -17,6 +17,7 @@ t/pod.t
 t/ctors.t
 t/use_consts.t
 t/invalid.t
-t/fork-inherit.t
+t/fork-inherit-named.t
+t/fork-inherit-unnamed.t
 t/fork-reopen.t
 META.yml                                 Module meta-data (added by MakeMaker)

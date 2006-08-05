@@ -9,19 +9,27 @@ use Test::More tests => 8;
 use Errno qw(ENOSYS ENXIO);
 use strict;
 
-BEGIN { require_ok("t/util.pl"); }
+# Test::More <= 0.51 explodes on require_ok("t/util.pl"), so we
+# do it the hard way:  supply a prototype for proper parsing of
+# the below (otherwise is_impl {block} is taken as an OO call),
+# and eval the require.
 
-ok(defined \&is_implemented, "is_implemented defined");
+sub is_implemented(&); # defined *is_impl{CODE}, !defined &is_impl;
+
+eval { require 't/util.pl'; };
+
+ok(!$@, "require 't/util.pl'");
+
+ok(defined &is_implemented, "is_implemented defined");
 
 my $v = undef;
 $! = &ENXIO;
-
 SKIP: {
 	skip "expected skip", 1
 		unless is_implemented { $v = "foo"; $! = &ENOSYS; };
 
 	fail("fell through!");
-} #-- SKIP
+}
 
 ok($v eq "foo", "$v was set");
 ok($! == &ENXIO, "errno not altered");

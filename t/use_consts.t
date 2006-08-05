@@ -20,8 +20,6 @@ for my $sym (@consts) {
 
 	if (! $@) {
 		pass("$sym (is $r)");
-	} elsif ($@ =~ /Your vendor has not defined the/) {
-		pass("$sym (not vendor-supplied)");
 	} else {
 		fail("$sym failure: $@");
 	}

@@ -6,9 +6,15 @@ use strict;
 our ($VERSION, @EXPORT_OK);
 
 BEGIN {
-	$VERSION = '0.02';
+	$VERSION = '0.03';
 	require XSLoader;
 	XSLoader::load(__PACKAGE__, $VERSION);
+
+	# -- Set up exports at BEGIN time
+	@EXPORT_OK =
+		('SIZEOF_SEM_T', grep {/^SEM_[A-Z_]+/} keys %POSIX::RT::Semaphore::); 
+
+	print "export_ok: $_\n" for @EXPORT_OK;
 
 	# -- awkwardness to support threaded
 	#    operation
@@ -40,8 +46,6 @@ BEGIN {
 
 use strict;
 use warnings;
-
-@EXPORT_OK = qw(SEM_NSEMS_MAX SEM_VALUE_MAX SIZEOF_SEM_T);
 
 #
 # -- Internal methods
@@ -231,6 +235,29 @@ a particular semaphore in a process is C<DESTROY>ed.
 
 =back
 
+=head1 CONSTANTS
+
+POSIX::RT::Semaphore offers a number of constants for import:
+
+=over 4
+
+=item SEM_NSEM_MAX
+
+The maximum number of semaphores, system-wide.
+
+=item SEM_VALUE_MAX
+
+The highest value a semaphore may have.
+
+=item SIZEOF_SEM_T
+
+The size of a C<sem_t> object on your system.
+
+=back
+
+You system may define other constants for import, such as SEM_NAME_LEN or
+SEM_NAME_MAX (each the maximum length of a named semaphore's name).
+
 =head1 CAVEATS
 
 =over 4
@@ -253,10 +280,10 @@ Interprocess semaphore support varies.  In the simplest cases,
 L</open> may simply return undef, setting $! to ENOSYS, as might L</init>
 with a non-zero PSHARED value.
 
-More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant 
-psem might be copied, rather than shared, across processes.  Some systems
-require PSHARED psems to be initialized in user-supplied shared memory, for
-which POSIX::RT::Semaphore currently has no support.
+More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant
+psem might be copied across processes if it was not allocated in shared
+memory.  On systems supporting mmap(), POSIX::RT::Semaphore initializes
+psems in anonymous, shared memory to avoid this unpleasantness.
 
 Semaphore name semantics, specifically their relationship to filesystem
 entities, is implementation defined.  POSIX conservatives will use only
@@ -274,7 +301,7 @@ lock/unlock to name a few.
 
 =head1 TODO
 
-Extend init() to support shared memory objects.
+Extend init() to support user-supplied shared memory objects.
 
 =head1 SEE ALSO
 
