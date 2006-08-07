@@ -10,14 +10,14 @@ use strict;
 
 BEGIN { use_ok('POSIX::RT::Semaphore'); }
 
-use constant SEMNAME => "/unlikely_to_be_extant.$$";
+use constant SEMNAME => make_semname();
 
 SKIP: {
 	my $sem;
 
 	# -- sem_open ENOSYS?
 	#
-	skip "sem_open: not implemented", 14
+	skip "sem_open: not implemented", 16
 		unless is_implemented {
 			$sem = POSIX::RT::Semaphore->open(SEMNAME, O_CREAT, S_IRWXU, 1);
 		};

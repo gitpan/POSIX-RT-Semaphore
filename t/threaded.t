@@ -45,7 +45,7 @@ SKIP: {
 
 	SKIP: {
 		my $sem;
-		my $SEMNAME = "/unlikely_to_exist.$$";
+		my $SEMNAME = make_semname();
 		
 		skip "sem_open: ENOSYS", 7
 			unless is_implemented { $sem = POSIX::RT::Semaphore->open($SEMNAME, O_CREAT, 0600, 1); };
@@ -69,7 +69,7 @@ SKIP: {
 			my $ok;
 			skip "sem_unlink ENOSYS", 1
 				unless is_implemented { $ok = POSIX::RT::Semaphore->unlink($SEMNAME); };
-			ok($ok, "sem_unlink");
+			ok(zero_but_true($ok), "sem_unlink");
 		}
 	} #-- SKIP named psem
 }

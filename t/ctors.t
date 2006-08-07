@@ -7,9 +7,10 @@
 use Test::More tests => 70;
 use strict;
 use Fcntl qw(O_CREAT S_IRWXU);
+BEGIN { require 't/util.pl'; }
 BEGIN { use_ok('POSIX::RT::Semaphore'); }
 
-our $SEM = "/unlikely_to_exist.$$";
+our $SEM = make_semname();
 
 sub checkUnnamed($$) {
 	my ($eval, $value) = @_;
@@ -73,12 +74,9 @@ checkNamed "POSIX::RT::Semaphore::Named->open('$SEM', O_CREAT, 0600)", 1;
 checkNamed "POSIX::RT::Semaphore::Named->open('$SEM', O_CREAT)", 1;
 checkNamed "POSIX::RT::Semaphore::Named->open('$SEM')", 1;
 
-$! = 0;
-my $ok = POSIX::RT::Semaphore->unlink($SEM);
 SKIP: {
-	unless (defined $ok) {
-		skip "sem_unlink ENOSYS", 1 if $!{ENOSYS}; # cygwin?
-		fail("sem_unlink: $!");
-	}
-	ok($ok, "sem_unlink");
+	my $ok;
+	skip "sem_unlink ENOSYS", 1
+		unless is_implemented { $ok = POSIX::RT::Semaphore->unlink($SEM); };
+	ok(zero_but_true($ok), "sem_unlink");
 }

@@ -28,6 +28,7 @@ SKIP: {
 	die "fork: $!\n" unless defined( my $pid = fork );
 
 	if (!$pid) {
+		Test::More->builder->no_ending(1);
 		close(R);
 		$sem->post;
 		exit;

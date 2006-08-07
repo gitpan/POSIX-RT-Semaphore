@@ -5,13 +5,13 @@
 # Can children manipulate sems by name?
 #
 
-use Test::More tests => 6;
+use Test::More tests => 7;
 use strict;
 use Fcntl qw(O_CREAT);
 BEGIN { require 't/util.pl'; }
 BEGIN { use_ok('POSIX::RT::Semaphore'); }
 
-use constant SEMNAME => "/unlikely_to_exist.$$";
+use constant SEMNAME => make_semname();
 
 sub child_sem($) {
 	my $method = shift;
@@ -19,6 +19,7 @@ sub child_sem($) {
 	die "fork: $!\n" unless defined($pid = fork);
 
 	if (!$pid) {
+		Test::More->builder->no_ending(1);
 		my $sem = POSIX::RT::Semaphore->open(SEMNAME, O_CREAT, 0600, 0);
 		$sem->$method;
 		exit;
@@ -29,7 +30,7 @@ sub child_sem($) {
 SKIP: {
 	my $sem;
 
-	skip "sem_open: ENOSYS", 5
+	skip "sem_open: ENOSYS", 6
 		unless is_implemented {
 			$sem = POSIX::RT::Semaphore->open(SEMNAME, O_CREAT, 0600, 0);
 		};
@@ -45,5 +46,10 @@ SKIP: {
 	ok($sem->getvalue == 3, "getvalue == 3");
 	child_sem("wait");
 	ok($sem->getvalue == 2, "getvalue == 2");
+	SKIP: {
+		my $ok;
+		skip "sem_unlink ENOSYS", 1
+			unless is_implemented {$ok=POSIX::RT::Semaphore->unlink(SEMNAME);};
+		ok(zero_but_true($ok), "sem_unlink");
+	}
 }
-

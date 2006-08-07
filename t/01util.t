@@ -5,7 +5,7 @@
 # Make sure util.pl does what we want.
 #
 
-use Test::More tests => 8;
+use Test::More tests => 10;
 use Errno qw(ENOSYS ENXIO);
 use strict;
 
@@ -21,6 +21,8 @@ eval { require 't/util.pl'; };
 ok(!$@, "require 't/util.pl'");
 
 ok(defined &is_implemented, "is_implemented defined");
+ok(defined &zero_but_true, "zero_but_true defined");
+ok(defined &make_semname, "make_semname defined");
 
 my $v = undef;
 $! = &ENXIO;

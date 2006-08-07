@@ -6,15 +6,13 @@ use strict;
 our ($VERSION, @EXPORT_OK);
 
 BEGIN {
-	$VERSION = '0.03';
+	$VERSION = '0.04';
 	require XSLoader;
 	XSLoader::load(__PACKAGE__, $VERSION);
 
 	# -- Set up exports at BEGIN time
 	@EXPORT_OK =
 		('SIZEOF_SEM_T', grep {/^SEM_[A-Z_]+/} keys %POSIX::RT::Semaphore::); 
-
-	print "export_ok: $_\n" for @EXPORT_OK;
 
 	# -- awkwardness to support threaded
 	#    operation
@@ -227,7 +225,7 @@ Note that this is distinct from Perl's DESTROY.
 
 Close the named semaphore for the calling process; subsequent method calls
 on the object will simply croak.  The underlying psem, however, is not
-removed until a call to C<POSIX::RT::Semaphore->unlink()>, nor does the call
+removed until a call to C<POSIX::RT::Semaphore-E<gt>unlink()>, nor does the call
 to C<close> affect any other process' connection to the same semaphore.
 
 This method is called implicitly when the last object representing
@@ -274,20 +272,23 @@ opening them, or to specify O_EXCL, to avoid opening a pre-existing psem.
 
 =item ENOSYS AND WORSE
 
-Implementation details vary; consult your system documentation.
+Implementation details vary, to put it mildly.  Consult your system
+documentation.
 
-Interprocess semaphore support varies.  In the simplest cases,
-L</open> may simply return undef, setting $! to ENOSYS, as might L</init>
-with a non-zero PSHARED value.
+Some systems support named but not anonymous semaphores (some versions of
+Darwin), others the opposite (older Linux), and still others are somewhere
+in between (Cygwin).
 
 More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant
 psem might be copied across processes if it was not allocated in shared
 memory.  On systems supporting mmap(), POSIX::RT::Semaphore initializes
 psems in anonymous, shared memory to avoid this unpleasantness.
 
-Semaphore name semantics, specifically their relationship to filesystem
-entities, is implementation defined.  POSIX conservatives will use only
-pathname-like names with a single, leading slash (e.g., "/my_sem").
+Semaphore name semantics is implementation defined, making portable name
+selection difficult.  POSIX conservatives will use only pathname-like names
+with a single, leading slash and no other slashes (e.g., "/my_sem").
+However, at least the OSF/Digital/Tru64 implementation currently maps names
+directly to the filesystem, encouraging semaphores such as "/tmp/my_sem". 
 
 L</getvalue> may not support the special negative semantics, and
 L</timedwait> may not be supported at all.

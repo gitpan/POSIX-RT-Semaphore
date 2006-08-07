@@ -14,7 +14,7 @@ SKIP: {
 
 	# -- sem_init ENOSYS?
 	#
-	skip "sem_init ENOSYS", 14
+	skip "sem_init ENOSYS", 16
 		unless is_implemented {
 			$sem = POSIX::RT::Semaphore->init(0, 1);
 		};

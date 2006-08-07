@@ -2,6 +2,15 @@ Revision history for Perl extension POSIX::RT::Semaphore.
 
 ER := Eric Rybski <rybskej#yahoo_com>
 
+0.04 Sun Aug 7 00:40:43 2006
+	- version 0.04
+	- Semaphore.pm: Update CAVEATs with portability concerns.  Remove
+	  debugging prints from 0.03.
+	- t/: util.pl accomodates dec_osf name choice.  No lingering named psems
+	  on system.  fork-* silence child's Test::More output.  skip-count
+	  cleanup following much varied ENOSYS exposure.  Beware SIGSYS, though.
+	- hints/:  Initial hints dir:  solaris, hpux and dec_osf support.
+
 0.03 Sat Aug 5 13:14:20 2006
 	- version 0.03
 	- Anonymous sems allocated in anon, shared memory if possible
