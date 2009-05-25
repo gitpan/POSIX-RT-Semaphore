@@ -1,6 +1,20 @@
 Revision history for Perl extension POSIX::RT::Semaphore.
 
+BV := Bijan Vakili <bvakili#oanda_com>
 ER := Eric Rybski <rybskej#yahoo_com>
+
+0.05 Thu May 21 20:48:11 2009
+	- version 0.05
+	- portability: ppport.h updated to perl-5.10, Makefile.PL favors librt
+	  by default, hints/ files updated appropriately; this should fix
+	  linking on FreeBSD and Solaris (thx BV).
+	- Semaphore.xs:  use HAVE_SEM_* defines to determine feature set, as
+	  Makefile.PL now searches for actually present functions (nod to
+	  Net-Pcap).  Export _SC constants.
+	- Semaphore.pm/POD: Note FreeBSD 14 character name limit, correct
+	  NSEMS typo, document _SC constants.
+	- t/: verify _SC macro export, use shorter semaphore names (thx BV), 
+	  accomodate Darwin's ENOSYS sem_getvalue().
 
 0.04 Sun Aug 7 00:40:43 2006
 	- version 0.04

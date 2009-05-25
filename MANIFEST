@@ -20,7 +20,6 @@ t/invalid.t
 t/fork-inherit-named.t
 t/fork-inherit-unnamed.t
 t/fork-reopen.t
-hints/dec_osf.pl
-hints/hpux.pl
+hints/darwin.pl
 hints/solaris.pl
 META.yml                                 Module meta-data (added by MakeMaker)

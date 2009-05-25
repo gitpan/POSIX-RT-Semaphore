@@ -3,9 +3,20 @@
 #include "XSUB.h"
 #include "ppport.h"
 
+#include <unistd.h>     /* _POSIX, _SC_* */
+
 #if !defined(_POSIX_SEMAPHORES)
 #  error "POSIX::RT::Semaphore requires _POSIX_SEMAPHORES support."
 #endif
+
+#include <semaphore.h>
+#include <limits.h>     /* _POSIX_SEM_* */
+#include <errno.h>      /* ENOSYS */
+
+#ifdef HAVE_SEM_TIMEDWAIT
+#  include <time.h>
+#endif
+
 
 #ifdef HAS_MMAP
 #  include <sys/mman.h>
@@ -24,11 +35,6 @@
 #endif
 
 
-#include <semaphore.h>
-#  include <errno.h>      /* ENOSYS */
-#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
-#  include <time.h>
-#endif
 
 typedef int SysRet;
 
@@ -122,8 +128,14 @@ BOOT:
 #ifdef _POSIX_SEM_VALUE_MAX
 	newCONSTSUB(stash, "SEM_VALUE_MAX", newSViv(_POSIX_SEM_VALUE_MAX));
 #endif
+#ifdef _SC_SEM_VALUE_MAX
+	newCONSTSUB(stash, "_SC_SEM_VALUE_MAX", newSViv(_POSIX_SEM_VALUE_MAX));
+#endif
 #ifdef _POSIX_SEM_NSEMS_MAX
 	newCONSTSUB(stash, "SEM_NSEMS_MAX", newSViv(_POSIX_SEM_NSEMS_MAX));
+#endif
+#ifdef _SC_SEM_NSEMS_MAX
+	newCONSTSUB(stash, "_SC_SEM_NSEMS_MAX", newSViv(_POSIX_SEM_NSEMS_MAX));
 #endif
 #ifdef SEM_NAME_LEN
 	newCONSTSUB(stash, "SEM_NAME_LEN", newSViv(SEM_NAME_LEN));
@@ -139,11 +151,12 @@ psem_unlink(pkg = "POSIX::RT::Semaphore", path)
 	char*             path
 
 	CODE:
-#ifdef __CYGWIN__
-	RETVAL = function_not_implemented();
-#else
+#ifdef HAVE_SEM_UNLINK
 	RETVAL = sem_unlink(path);
-#endif /* !__CYGWIN__ */
+#else
+	# older versions of Cygwin
+	RETVAL = function_not_implemented();
+#endif
 
 	OUTPUT:
 	RETVAL
@@ -194,13 +207,13 @@ psem_timedwait(self, timeout)
 	NV                             timeout
 
 	PREINIT:
-#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
+#ifdef HAVE_SEM_TIMEDWAIT
 	struct timespec ts;
 #endif
 
 	CODE:
 	PRECOND_valid_psem("timedwait", self);
-#if defined(_POSIX_TIMEOUTS) || defined(__CYGWIN__)
+#ifdef HAVE_SEM_TIMEDWAIT
 	if (timeout < 0.0)
 		timeout = 0.0;
 	ts.tv_sec  = (long)timeout;

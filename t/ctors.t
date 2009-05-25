@@ -25,7 +25,7 @@ sub checkUnnamed($$) {
 
 		ok($sem, "$eval");
 		isa_ok($sem, "POSIX::RT::Semaphore::Unnamed");
-		ok($sem->getvalue == $value, "getvalue() == $value");
+		ok_getvalue($sem, $value);
 		ok($sem->destroy, "destroy()");
 	}
 }
@@ -50,7 +50,7 @@ sub checkNamed($$) {
 
 		ok($sem, "$eval: $!");
 		isa_ok($sem, "POSIX::RT::Semaphore::Named");
-		ok($sem->getvalue == $value, "getvalue() == $value");
+		ok_getvalue($sem, $value);
 		ok($sem->close, "close()");
 	}
 }

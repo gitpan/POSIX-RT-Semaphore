@@ -31,16 +31,16 @@ SKIP: {
 
 	# -- Basic methods: wait, post, getvalue, trywait
 	#
-	ok($sem->getvalue() == 1, "getvalue() -> 1");
+	ok_getvalue($sem, 1, "getvalue() -> 1");
 	ok(zero_but_true($sem->wait), "wait() -> zero-but-true");
-	ok($sem->getvalue() == 0, "getvalue() -> 0");
+	ok_getvalue($sem, 0, "getvalue() -> 0");
 	$! = 0;
 	ok((!defined($sem->trywait) and $!{EAGAIN}), "trywait EAGAIN");
 	ok(zero_but_true($sem->post), "post() -> zero-but-true");
 	ok(zero_but_true($sem->post), "post() -> zero-but-true");
-	ok($sem->getvalue() == 2, "getvalue() -> 2");
+	ok_getvalue($sem, 2, "getvalue() -> 2");
   	ok(zero_but_true($sem->trywait), "trywait() -> zero-but-true");
-	ok($sem->getvalue == 1, "getvalue() == 1");
+	ok_getvalue($sem, 1, "getvalue() == 1");
 
 	# -- Maybe supported: sem_timedwait
 	#
@@ -49,7 +49,7 @@ SKIP: {
 		skip "sem_timedwait ENOSYS", 3
 			unless is_implemented { $r = $sem->timedwait(time() + 2); };
 		ok(zero_but_true($r), "timedwait() -> zero-but-true");
-		ok($sem->getvalue == 0, "getvalue() == 0");
+		ok_getvalue($sem, 0, "getvalue() == 0");
 
 		$! = 0;
 		$r = $sem->timedwait(time()  + 2);

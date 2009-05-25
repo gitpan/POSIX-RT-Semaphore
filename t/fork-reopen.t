@@ -36,16 +36,16 @@ SKIP: {
 		};
 
 	ok($sem, "sem_open");
-	ok($sem->getvalue == 0, "getvalue == 0");
+	ok_getvalue($sem, 0, "getvalue == 0");
 	$sem->post;
-	ok($sem->getvalue == 1, "getvalue == 1");
+	ok_getvalue($sem, 1, "getvalue == 1");
 
 	child_sem("post");
 	child_sem("post");
 
-	ok($sem->getvalue == 3, "getvalue == 3");
+	ok_getvalue($sem, 3, "getvalue == 3");
 	child_sem("wait");
-	ok($sem->getvalue == 2, "getvalue == 2");
+	ok_getvalue($sem, 2, "getvalue == 2");
 	SKIP: {
 		my $ok;
 		skip "sem_unlink ENOSYS", 1

@@ -23,7 +23,7 @@ SKIP: {
 		};
 
 	ok($sem, "sem_open");
-	ok($sem->getvalue == 0, "getvalue == 0");
+	ok_getvalue($sem, 0, "getvalue == 0");
 
 	die "pipe: $!\n" unless pipe(R, W);
 	die "fork: $!\n" unless defined( my $pid = fork );
@@ -37,11 +37,13 @@ SKIP: {
 
 	close(W);
 	<R>;
-	skip "child couldn't manipulate sem", 3
-		unless $sem->getvalue == 1;
-	ok(1, "getvalue == 1");
-	ok($sem->wait, "wait");
-	ok($sem->getvalue == 0, "getvalue == 0");
+	ok_getvalue($sem, 1);
+	my $ok = $sem->trywait;
+	if (!defined($ok) and $!{EAGAIN}) {
+		skip "child couldn't manipulate sem", 2;
+	}
+	ok(1, "trywait");
+	ok_getvalue($sem, 0);
 	SKIP: {
 		my $ok;
 		skip "sem_unlink ENOSYS", 1

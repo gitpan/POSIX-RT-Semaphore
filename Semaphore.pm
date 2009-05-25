@@ -6,13 +6,13 @@ use strict;
 our ($VERSION, @EXPORT_OK);
 
 BEGIN {
-	$VERSION = '0.04';
+	$VERSION = '0.05';
 	require XSLoader;
 	XSLoader::load(__PACKAGE__, $VERSION);
 
 	# -- Set up exports at BEGIN time
 	@EXPORT_OK =
-		('SIZEOF_SEM_T', grep {/^SEM_[A-Z_]+/} keys %POSIX::RT::Semaphore::); 
+		('SIZEOF_SEM_T', grep {/^(_SC_)?SEM_[A-Z_]+/} keys %POSIX::RT::Semaphore::); 
 
 	# -- awkwardness to support threaded
 	#    operation
@@ -239,13 +239,17 @@ POSIX::RT::Semaphore offers a number of constants for import:
 
 =over 4
 
-=item SEM_NSEM_MAX
+=item SEM_NSEMS_MAX, _SC_SEM_NSEMS_MAX
 
-The maximum number of semaphores, system-wide.
+The maximum number of semaphores, per-process.  This number is actually
+_POSIX_SEM_NSEMS_MAX, and the _SC constant may be passed to
+C<POSIX::sysconf()> to determine the process' true current limit.
 
-=item SEM_VALUE_MAX
+=item SEM_VALUE_MAX, _SC_SEM_VALUE_MAX
 
-The highest value a semaphore may have.
+The highest value a semaphore may have.  This number is actually
+_POSIX_SEM_VALUE_MAX, and the _SC constant may be passed to
+C<POSIX::sysconf()> to determine the process' true, current ceiling.
 
 =item SIZEOF_SEM_T
 
@@ -253,7 +257,7 @@ The size of a C<sem_t> object on your system.
 
 =back
 
-You system may define other constants for import, such as SEM_NAME_LEN or
+Your system may define other constants for import, such as SEM_NAME_LEN or
 SEM_NAME_MAX (each the maximum length of a named semaphore's name).
 
 =head1 CAVEATS
@@ -275,9 +279,10 @@ opening them, or to specify O_EXCL, to avoid opening a pre-existing psem.
 Implementation details vary, to put it mildly.  Consult your system
 documentation.
 
-Some systems support named but not anonymous semaphores (some versions of
-Darwin), others the opposite (older Linux), and still others are somewhere
-in between (Cygwin).
+Some systems support named but not anonymous semaphores, others the
+opposite, and still others are somewhere in between.  L</timedwait> may not
+be implemented (failing with $! set to ENOSYS).  L</getvalue> is much more
+widely supported, though its special negative semantics may not be.
 
 More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant
 psem might be copied across processes if it was not allocated in shared
@@ -289,9 +294,8 @@ selection difficult.  POSIX conservatives will use only pathname-like names
 with a single, leading slash and no other slashes (e.g., "/my_sem").
 However, at least the OSF/Digital/Tru64 implementation currently maps names
 directly to the filesystem, encouraging semaphores such as "/tmp/my_sem". 
-
-L</getvalue> may not support the special negative semantics, and
-L</timedwait> may not be supported at all.
+On at least some FreeBSD implementations, semaphore pathnames may be no
+longer than 14 characters.
 
 =item MISC
 
@@ -302,7 +306,7 @@ lock/unlock to name a few.
 
 =head1 TODO
 
-Extend init() to support user-supplied shared memory objects.
+Extend init() to support user-supplied, shared memory objects.
 
 =head1 SEE ALSO
 
@@ -312,11 +316,11 @@ L<IPC::Semaphore>, L<Thread::Semaphore>
 
 Michael J. Pomraning
 
-Please report bugs to E<lt>mjp-perl AT pilcrow.madison.wi.usE<gt>
+Please report bugs via rt.cpan.org.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2006 by Michael J. Pomraning
+Copyright 2009 by Michael J. Pomraning
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

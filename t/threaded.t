@@ -28,19 +28,19 @@ SKIP: {
 			unless is_implemented { $sem = POSIX::RT::Semaphore->init(0, 1); };
 
 		ok($sem, "unnamed ctor");
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 
 		threads->create(sub { $sem->post; } )->join;
-		ok($sem->getvalue() == 2, "getvalue == 2");
+		ok_getvalue($sem, 2, "getvalue == 2");
 
 		threads->create(sub { $sem->trywait; })->join;
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 		
 		threads->create(sub { $sem->wait; })->join;
-		ok($sem->getvalue() == 0, "getvalue == 0");
+		ok_getvalue($sem, 0, "getvalue == 0");
 		
 		threads->create(sub { $_[0]->post }, $sem)->join;
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 	} #-- skip anon psem
 
 	SKIP: {
@@ -51,19 +51,19 @@ SKIP: {
 			unless is_implemented { $sem = POSIX::RT::Semaphore->open($SEMNAME, O_CREAT, 0600, 1); };
 
 		ok($sem, "named ctor");
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 
 		threads->create(sub { $sem->post; } )->join;
-		ok($sem->getvalue() == 2, "getvalue == 2");
+		ok_getvalue($sem, 2, "getvalue == 2");
 
 		threads->create(sub { $sem->trywait; })->join;
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 		
 		threads->create(sub { $sem->wait; })->join;
-		ok($sem->getvalue() == 0, "getvalue == 0");
+		ok_getvalue($sem, 0, "getvalue == 0");
 		
 		threads->create(sub { $_[0]->post }, $sem)->join;
-		ok($sem->getvalue() == 1, "getvalue == 1");
+		ok_getvalue($sem, 1, "getvalue == 1");
 
 		SKIP: {
 			my $ok;
