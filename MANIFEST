@@ -7,7 +7,8 @@ Semaphore.pm
 Semaphore.xs
 typemap
 t/util.pl
-t/01util.t
+t/00-load.t
+t/01-util.t
 t/unnamed.t
 t/can.t
 t/named.t
@@ -20,6 +21,5 @@ t/invalid.t
 t/fork-inherit-named.t
 t/fork-inherit-unnamed.t
 t/fork-reopen.t
-hints/darwin.pl
-hints/solaris.pl
 META.yml                                 Module meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

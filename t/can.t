@@ -7,7 +7,6 @@
 
 use Test::More tests => 26;
 use POSIX::RT::Semaphore;
-use UNIVERSAL qw(can);
 use strict;
 
 ok(1, "use/import ok");

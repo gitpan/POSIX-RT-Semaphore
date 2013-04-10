@@ -34,66 +34,16 @@
 #  endif
 #endif
 
-
-
 typedef int SysRet;
+
+static const char * const SEM_ANON_PSHARED = "\0SEM_ANON_PSHARED";
 
 typedef struct PSem_C {
   sem_t* sem;
-  char * name;
+  char * name; /* Overloaded with SEM_ANON_PSHARED */
 } * POSIX__RT__Semaphore___base;
 typedef POSIX__RT__Semaphore___base POSIX__RT__Semaphore__Named;
 typedef POSIX__RT__Semaphore___base POSIX__RT__Semaphore__Unnamed;
-
-/* _alloc_sem()
- * 
- * Return a new sem_t in shared memory (maybe), or NULL (_not_ SEM_FAILED)
- * on failure.
- */
-static sem_t *
-_alloc_sem(void) {
-	sem_t *sem = NULL;
-#ifdef HAS_MMAP
-	int fd = -1;
-	int prot_flags = PROT_READ|PROT_WRITE;
-	int map_flags = MAP_SHARED|MAP_HASSEMAPHORE;
-
-#  ifdef MAP_ANONYMOUS
-	map_flags |= MAP_ANONYMOUS;
-	sem = (sem_t *)mmap(NULL, sizeof(sem_t), prot_flags, map_flags, fd, 0);
-#  else
-	if ((fd = open("/dev/zero", O_RDWR)) != -1) {
-		sem = (sem_t *)mmap(NULL, sizeof(sem_t), prot_flags, map_flags, fd, 0);
-		close(fd);
-	}
-#  endif /* MAP_ANONYMOUS */
-#else
-	Newz(0, sem, 1, sem_t);
-#endif /* HAS_MMAP */
-
-	return sem;
-}
-
-/* _dealloc_sem
- *
- * Free a sem_t we allocated.
- */
-static void
-_dealloc_sem(sem_t *sem)
-{
-#ifdef HAS_MMAP
-	munmap((void *)sem, sizeof(sem_t));
-#else
-	Safefree(sem);
-#endif
-}
-
-static int
-function_not_implemented(void)
-{
-  errno = ENOSYS;
-  return -1;
-}
 
 #define sem_valid(sem)     ((sem) && (sem) != SEM_FAILED)
 
@@ -104,16 +54,105 @@ function_not_implemented(void)
   } while (0)
 
 
+/* _alloc_sem()
+ *
+ * Return a new sem_t in shared memory (maybe), or NULL (_not_ SEM_FAILED)
+ * on failure.
+ */
+static sem_t *
+_alloc_sem(int pshared) {
+	sem_t *sem = NULL;
+
+	if (!pshared) {
+		Newxz(sem, 1, sem_t);
+	} else {
+#ifdef HAS_MMAP
+		int fd = -1;
+		int prot_flags = PROT_READ|PROT_WRITE;
+		int map_flags = MAP_SHARED|MAP_HASSEMAPHORE;
+
+#	ifdef MAP_ANONYMOUS
+		map_flags |= MAP_ANONYMOUS;
+		sem = (sem_t *)mmap(NULL, sizeof(*sem), prot_flags, map_flags, fd, 0);
+#	else
+		if ((fd = open("/dev/zero", O_RDWR)) != -1) {
+			sem = (sem_t *)mmap(NULL, sizeof(*sem), prot_flags, map_flags, fd, 0);
+			close(fd);
+		}
+#	endif /* MAP_ANONYMOUS */
+#else
+		/* Hmm.  No mmap.  Options:
+		 *  - Dodge with EPERM, as some BSD variants do for any pshared sem
+		 *  - croak("don't know how to allocate shared memory")
+		 *  - shmget/IPC_PRIVATE
+		 *  - sem_open/O_EXCL + sem_unlink
+ 		 */
+		croak("mmap not implemented, but currently needed for pshared semaphore memory allocation");
+#endif /* HAS_MMAP */
+	}
+
+	return sem;
+}
+
+/* _dealloc_sem
+ *
+ * Free a sem_t we allocated.
+ */
+static void
+_dealloc_sem(sem_t *sem, int pshared)
+{
+	int save_errno = errno;
+
+	if (sem_valid(sem)) {
+		if (pshared) {
+			munmap((void *)sem, sizeof(sem_t));
+		} else {
+			Safefree(sem);
+		}
+	}
+
+	errno = save_errno;
+}
+
+static int
+function_not_implemented(void)
+{
+  errno = ENOSYS;
+  return -1;
+}
+
 MODULE = POSIX::RT::Semaphore  PACKAGE = POSIX::RT::Semaphore  PREFIX = psem_
 PROTOTYPES: DISABLE
 
 BOOT:
 {
+  struct { char * const sym; int value; } constants[] = {
+    { "SIZEOF_SEM_T", sizeof(sem_t) },
+#ifdef _POSIX_SEM_VALUE_MAX
+    { "SEM_VALUE_MAX", _POSIX_SEM_VALUE_MAX },
+#endif
+#ifdef _SC_SEM_VALUE_MAX
+    { "_SC_SEM_VALUE_MAX", _SC_SEM_VALUE_MAX },
+#endif
+#ifdef _POSIX_SEM_NSEMS_MAX
+    { "SEM_NSEMS_MAX", _POSIX_SEM_NSEMS_MAX },
+#endif
+#ifdef _SC_SEM_NSEMS_MAX
+    { "_SC_SEM_NSEMS_MAX", _SC_SEM_NSEMS_MAX },
+#endif
+#ifdef SEM_NAME_LEN
+    { "SEM_NAME_LEN", SEM_NAME_LEN },
+#endif
+#ifdef SEM_NAME_MAX
+    { "SEM_NAME_MAX", SEM_NAME_MAX },
+#endif
+  };
 	char * const pkgs[] = {
 		"POSIX::RT::Semaphore::Named::ISA",
 		"POSIX::RT::Semaphore::Unnamed::ISA",
 	};
 	HV *stash;
+	AV *export_ok;
 	int i;
 
 	for (i = 0; i < sizeof(pkgs)/sizeof(*pkgs); i++) {
@@ -123,26 +162,11 @@ BOOT:
 	}
 
 	stash = gv_stashpvn("POSIX::RT::Semaphore", 20, TRUE);
-
-	newCONSTSUB(stash, "SIZEOF_SEM_T", newSViv(sizeof(sem_t)));
-#ifdef _POSIX_SEM_VALUE_MAX
-	newCONSTSUB(stash, "SEM_VALUE_MAX", newSViv(_POSIX_SEM_VALUE_MAX));
-#endif
-#ifdef _SC_SEM_VALUE_MAX
-	newCONSTSUB(stash, "_SC_SEM_VALUE_MAX", newSViv(_POSIX_SEM_VALUE_MAX));
-#endif
-#ifdef _POSIX_SEM_NSEMS_MAX
-	newCONSTSUB(stash, "SEM_NSEMS_MAX", newSViv(_POSIX_SEM_NSEMS_MAX));
-#endif
-#ifdef _SC_SEM_NSEMS_MAX
-	newCONSTSUB(stash, "_SC_SEM_NSEMS_MAX", newSViv(_POSIX_SEM_NSEMS_MAX));
-#endif
-#ifdef SEM_NAME_LEN
-	newCONSTSUB(stash, "SEM_NAME_LEN", newSViv(SEM_NAME_LEN));
-#endif
-#ifdef SEM_NAME_MAX
-	newCONSTSUB(stash, "SEM_NAME_MAX", newSViv(SEM_NAME_MAX));
-#endif
+	export_ok = get_av("POSIX::RT::Semaphore::EXPORT_OK", TRUE);
+  for (i = 0; i < sizeof(constants)/sizeof(*constants); i++) {
+    newCONSTSUB(stash, constants[i].sym, newSViv(constants[i].value));
+    av_push(export_ok, newSVpv(constants[i].sym, 0));
+  }
 }
 
 SysRet
@@ -155,6 +179,7 @@ psem_unlink(pkg = "POSIX::RT::Semaphore", path)
 	RETVAL = sem_unlink(path);
 #else
 	# older versions of Cygwin
+	(void)path;
 	RETVAL = function_not_implemented();
 #endif
 
@@ -163,21 +188,6 @@ psem_unlink(pkg = "POSIX::RT::Semaphore", path)
 
 MODULE = POSIX::RT::Semaphore PACKAGE = POSIX::RT::Semaphore::_base  PREFIX = psem_
 PROTOTYPES: DISABLE
-
-void
-psem_DESTROY(self)
-	POSIX::RT::Semaphore::_base    self
-
-	CODE:
-	if (self->name) {
-		if (sem_valid(self->sem))
-			(void)sem_close(self->sem);
-		Safefree(self->name);
-	} else {
-		if (sem_valid(self->sem))
-			_dealloc_sem(self->sem);
-	}
-	Safefree(self);
 
 SysRet
 psem_wait(self)
@@ -191,7 +201,7 @@ psem_wait(self)
 	RETVAL
 
 SysRet
-psem_trywait(self) 
+psem_trywait(self)
 	POSIX::RT::Semaphore::_base    self
 
 	CODE:
@@ -221,6 +231,7 @@ psem_timedwait(self, timeout)
 	ts.tv_nsec = (long)(timeout * 1000000000.0);
 	RETVAL = sem_timedwait(self->sem, (const struct timespec *)&ts);
 #else
+	(void)timeout;
 	RETVAL = function_not_implemented();
 #endif
 
@@ -274,19 +285,23 @@ psem_init(pkg = "POSIX::RT::Semaphore::Unnamed", pshared = 0, value = 1)
 	int                 pshared
 	unsigned            value
 
+	PREINIT:
+	sem_t *sem = NULL;
+
 	CODE:
-	Newz(0, RETVAL, 1, struct PSem_C);
-	RETVAL->sem = _alloc_sem();
-	if (NULL == RETVAL->sem) {
-		Safefree(RETVAL);
-		croak("sem_init: failed to allocate semaphore");
+	RETVAL = NULL;
+
+	sem = _alloc_sem(pshared);
+	if (NULL == sem) XSRETURN_UNDEF;
+
+	if (0 == (sem_init(sem, pshared, value))) {
+		Newxz(RETVAL, 1, struct PSem_C);
+		RETVAL->sem = sem;
+		if (pshared) RETVAL->name = (char *)SEM_ANON_PSHARED;
+	} else {
+		_dealloc_sem(sem, pshared);
+		XSRETURN_UNDEF;
 	}
-	if (sem_init(RETVAL->sem, pshared, value) == -1) {
-		_dealloc_sem(RETVAL->sem);
-		Safefree(RETVAL);
-		RETVAL = NULL;
-	}
-	#warn("xs.sem_init 0x%x (sem: 0x%x)\n", RETVAL, RETVAL->sem);
 
 	OUTPUT:
 	RETVAL
@@ -298,13 +313,24 @@ psem_destroy(self)
 	CODE:
 	PRECOND_valid_psem("destroy", self);
 	if (0 == (RETVAL = sem_destroy(self->sem))) {
-		_dealloc_sem(self->sem);
+		_dealloc_sem(self->sem, self->name == SEM_ANON_PSHARED);
 		self->sem = NULL;
 	}
 
 	OUTPUT:
 	RETVAL
 
+void
+psem_DESTROY(self)
+	POSIX::RT::Semaphore::Unnamed    self
+
+	CODE:
+	# Safe to destroy private anon sem, since dtor wrapper will prevent this
+	# from executing if any other threads hold refence to self.
+	if (self->name != SEM_ANON_PSHARED && sem_valid(self->sem))
+		(void)sem_destroy(self->sem);
+	_dealloc_sem(self->sem, self->name == SEM_ANON_PSHARED);
+	Safefree(self);
 
 MODULE = POSIX::RT::Semaphore PACKAGE = POSIX::RT::Semaphore::Named  PREFIX = psem_
 PROTOTYPES: DISABLE
@@ -326,10 +352,9 @@ psem_open(pkg = "POSIX::RT::Semaphore::Named", name, flags = 0, mode = 0666, val
 		XSRETURN_UNDEF;
 	}
 
-	Newz(0, RETVAL, 1, struct PSem_C);
+	Newxz(RETVAL, 1, struct PSem_C);
 	RETVAL->sem = sem;
 	RETVAL->name = savepv(name);
-	#warn("xs.sem_open 0x%x (sem: 0x%x)\n", RETVAL, RETVAL->sem);
 
 	OUTPUT:
 	RETVAL
@@ -345,3 +370,11 @@ psem_close(self)
 
 	OUTPUT:
 	RETVAL
+
+void
+psem_DESTROY(self)
+	POSIX::RT::Semaphore::Named    self
+
+	CODE:
+	if (sem_valid(self->sem)) (void)sem_close(self->sem);
+	Safefree(self);

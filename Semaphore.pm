@@ -6,39 +6,40 @@ use strict;
 our ($VERSION, @EXPORT_OK);
 
 BEGIN {
-	$VERSION = '0.05';
-	require XSLoader;
-	XSLoader::load(__PACKAGE__, $VERSION);
+$VERSION = '0.05_01';
+require XSLoader;
+XSLoader::load(__PACKAGE__, $VERSION);
 
-	# -- Set up exports at BEGIN time
-	@EXPORT_OK =
-		('SIZEOF_SEM_T', grep {/^(_SC_)?SEM_[A-Z_]+/} keys %POSIX::RT::Semaphore::); 
+# -- awkwardness to support threaded
+#    operation
+if ($INC{'threads.pm'}) {
+  require threads::shared;
+  no warnings 'redefine';
 
-	# -- awkwardness to support threaded
-	#    operation
-	if ($INC{'threads.pm'}) {
-		require threads::shared;
-		no warnings 'redefine';
+  for ('Unnamed::init', 'Named::open') {
+    no strict 'refs';
 
-		for ('Unnamed::init', 'Named::open') {
-			no strict 'refs';
+    my $sym = __PACKAGE__ . "::$_";
+    my $ctor = \&{$sym};
+    *{$sym} = sub {
+      my $psem = &$ctor;
+      &threads::shared::share($psem) if defined $psem;
+      $psem;
+    }
+  }
 
-			my $sym = __PACKAGE__ . "::$_";
-			my $ctor = \&{$sym};
-			*{$sym} = sub {
-				my $psem = &$ctor;
-				&threads::shared::share($psem) if defined $psem;
-				$psem;
-			}
-		}
+  for ('Unnamed', 'Named') {
+    no strict 'refs';
 
-		my $dtor = \&POSIX::RT::Semaphore::_base::DESTROY;
-		*POSIX::RT::Semaphore::_base::DESTROY = sub {
-			lock($_[0]);
-			return unless threads::shared::_refcnt($_[0]) == 1;
-			&$dtor;
-		};
-	} # -- if ($INC{'threads.pm'})
+    my $sym = __PACKAGE__ . "::${_}::DESTROY";
+    my $dtor = \&{$sym};
+    *{$sym} = sub {
+      lock($_[0]);
+      return unless threads::shared::_refcnt($_[0]) == 1;
+      &$dtor;
+    }
+  }
+} # -- if ($INC{'threads.pm'})
 
 }
 
@@ -59,13 +60,13 @@ sub import {
 #
 
 sub init {
-	shift @_;
-	return POSIX::RT::Semaphore::Unnamed->init(@_);
+  shift @_;
+  return POSIX::RT::Semaphore::Unnamed->init(@_);
 }
 
 sub open {
-	shift @_;
-	return POSIX::RT::Semaphore::Named->open(@_);
+  shift @_;
+  return POSIX::RT::Semaphore::Named->open(@_);
 }
 
 1;
@@ -81,7 +82,7 @@ POSIX::RT::Semaphore - Perl interface to POSIX.1b semaphores
   use POSIX::RT::Semaphore;
   use Fcntl;            # O_CREAT, O_EXCL for named semaphore creation
 
-  ## unnamed semaphore, initial value 1
+  ## unnamed, non-shared semaphore, initial value 1
   $sem = POSIX::RT::Semaphore->init(0, 1);
 
   ## named semaphore, initial value 1
@@ -124,8 +125,9 @@ failure (setting $!), and a true value on success.
 A convenience for the POSIX::RT::Semaphore::Unnamed-E<gt>init class method.
 
 Return a new POSIX::RT::Semaphore::Unnamed object, initialized to VALUE.  If
-PSHARED is non-zero, the psem may be shared between processes (subject to
-implementation CAVEATS, below).
+PSHARED is non-zero, POSIX::RT::Semaphore will allocate shared memory for
+the new semaphore, so that child processes may inherit and use the semaphore.
+(But see implementation CAVEATS, below.)
 
 Unnamed semaphores persist until explicitly released by calling their
 C<destroy> method.
@@ -141,16 +143,16 @@ C<destroy> method.
 A convenience for the POSIX::RT::Semaphore::Named-E<gt>open class method.
 
 Return a new POSIX::RT::Semaphore::Named object, referring to the underlying
-semaphore NAME.  Other processes may attempt to access the same psem by
-that NAME.
+semaphore NAME.  Descendant processes may safely inherit and use the psem,
+and unrelated processes may attempt to L</open> the same psem by NAME.
 
 OFLAGS may specify O_CREAT and O_EXCL, imported from the L<Fcntl|Fcntl>
 module, to create a new system semaphore.  A filesystem-like MODE,
 defaulting to 0666, and an initial VALUE, defaulting to 1, may be supplied.
 
 Named semaphores persist until explicitly removed by a call to the C<unlink>
-class method.  A subsequent C<open> of that NAME will return a new system
-psem.
+class method.  A subsequent C<open> of that NAME by any process will return
+a new system psem.
 
 =item unlink NAME
 
@@ -213,7 +215,11 @@ which has inherited the now-defunct semaphore, for example, are undefined.
 This method may fail if any processes is blocked on the underlying
 semaphore.
 
-Note that this is distinct from Perl's DESTROY.
+C<destroy> is implicitly called when the last reference to a I<non-shared>
+semaphore (zero PSHARED) goes out of scope.  However, it is I<not> called
+when the last reference to a shared semaphore (non-zero PSHARED) vanished,
+as perl cannot know if other processes have inherited the underlying
+semaphore.
 
 =back
 
@@ -269,33 +275,32 @@ SEM_NAME_MAX (each the maximum length of a named semaphore's name).
 POSIX semaphores are system constructs existing apart from the processes
 that use them.  For named psems in particular, this means that the value of
 a newly opened semaphore may not be that VALUE specified in the L</open>
-call. 
+call.
 
 Depending on the application, it may be advisable to L</unlink> psems before
-opening them, or to specify O_EXCL, to avoid opening a pre-existing psem.  
+opening them, or to specify O_EXCL, to avoid opening a pre-existing psem.
 
 =item ENOSYS AND WORSE
 
 Implementation details vary, to put it mildly.  Consult your system
 documentation.
 
-Some systems support named but not anonymous semaphores, others the
-opposite, and still others are somewhere in between.  L</timedwait> may not
-be implemented (failing with $! set to ENOSYS).  L</getvalue> is much more
-widely supported, though its special negative semantics may not be.
+Some systems support named but not anonymous semaphores, others the opposite,
+and still others are somewhere in between.  L</timedwait> may not be
+implemented (failing with $! set to ENOSYS).  L</getvalue> is much more widely
+supported, though its special negative semantics may not be.  Ancient versions
+of Cygwin omitted L</unlink>, and old versions did not offer persistent
+semantics for named semaphores in any case.  Some BSD variants shrug off
+PSHARED semaphores with EPERM, but will happily initialize non-shared unnamed
+semaphores.
 
-More subtly, L</init> with a non-zero PSHARED may succeed, but the resultant
-psem might be copied across processes if it was not allocated in shared
-memory.  On systems supporting mmap(), POSIX::RT::Semaphore initializes
-psems in anonymous, shared memory to avoid this unpleasantness.
-
-Semaphore name semantics is implementation defined, making portable name
+Semaphore name restrictions are implementation defined, making portable name
 selection difficult.  POSIX conservatives will use only pathname-like names
-with a single, leading slash and no other slashes (e.g., "/my_sem").
-However, at least the OSF/Digital/Tru64 implementation currently maps names
-directly to the filesystem, encouraging semaphores such as "/tmp/my_sem". 
-On at least some FreeBSD implementations, semaphore pathnames may be no
-longer than 14 characters.
+with a single, leading slash and no other slashes (e.g., "/my_sem").  However,
+at least the OSF/Digital/Tru64 implementation currently maps names directly to
+the filesystem, encouraging semaphores such as "/tmp/my_sem".  On at least some
+FreeBSD implementations, semaphore pathnames may be no longer than 14
+characters.
 
 =item MISC
 

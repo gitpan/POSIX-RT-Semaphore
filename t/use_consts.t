@@ -1,26 +1,34 @@
 #
 # use_consts.t
 #
-use Test::More tests => 6;
+use Test::More tests => 2;
 use strict;
-BEGIN {
-	our @consts = qw(SEM_NSEMS_MAX SEM_VALUE_MAX _SC_SEM_NSEMS_MAX _SC_SEM_VALUE_MAX SIZEOF_SEM_T);
-	use_ok('POSIX::RT::Semaphore', @consts);
+use POSIX::RT::Semaphore;
+
+our $pkg = 'A';
+
+our @optional  = qw(SEM_NSEMS_MAX
+                    SEM_VALUE_MAX
+                    _SC_SEM_NSEMS_MAX
+                    _SC_SEM_VALUE_MAX);
+
+sub is_exported {
+  my $sym = shift;
+  my $r;
+  eval <<__EOEVAL;
+    package Ad::Hoc::$pkg;
+    POSIX::RT::Semaphore->import('$sym');
+    \$r = defined(&$sym);
+__EOEVAL
+  $pkg++;
+  $r;
 }
 
-our @consts;
+ok(is_exported('SIZEOF_SEM_T'), "SIZEOF_SEM_T exported");
+ok(! is_exported('BOGUS_SEM_CONSTANT'), "Bogus constant not exported");
 
-for my $sym (@consts) {
-	my $r;
-
-	eval {
-		no strict 'refs';
-		$r = &{$sym}();
-	};
-
-	if (! $@) {
-		pass("$sym (is $r)");
-	} else {
-		fail("$sym failure: $@");
-	}
+diag "\n";
+for my $sym (@optional) {
+  
+  diag("$sym: " . (is_exported($sym) ? 'defined' : 'absent'));
 }
