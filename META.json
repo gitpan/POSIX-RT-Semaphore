@@ -30,8 +30,7 @@
       },
       "configure" : {
          "requires" : {
-            "Config" : "0",
-            "ExtUtils::CBuilder" : "0",
+            "DynaLoader" : "0",
             "ExtUtils::MakeMaker" : "0"
          }
       },
@@ -44,5 +43,5 @@
       }
    },
    "release_status" : "testing",
-   "version" : "0.05_01"
+   "version" : "0.05_02"
 }

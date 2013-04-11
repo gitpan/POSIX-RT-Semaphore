@@ -13,7 +13,8 @@
 #include <limits.h>     /* _POSIX_SEM_* */
 #include <errno.h>      /* ENOSYS */
 
-#ifdef HAVE_SEM_TIMEDWAIT
+#if defined(_POSIX_TIMEOUTS) && (_POSIX_TIMEOUTS - 200112L) >= 0L
+#  define HAVE_SEM_TIMEDWAIT
 #  include <time.h>
 #endif
 
@@ -175,12 +176,12 @@ psem_unlink(pkg = "POSIX::RT::Semaphore", path)
 	char*             path
 
 	CODE:
-#ifdef HAVE_SEM_UNLINK
-	RETVAL = sem_unlink(path);
-#else
+#ifdef MISSING_SEM_UNLINK
 	# older versions of Cygwin
 	(void)path;
 	RETVAL = function_not_implemented();
+#else
+	RETVAL = sem_unlink(path);
 #endif
 
 	OUTPUT:

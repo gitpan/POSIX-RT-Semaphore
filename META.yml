@@ -8,8 +8,7 @@ build_requires:
   Fcntl: 0
   Test::More: 0
 configure_requires:
-  Config: 0
-  ExtUtils::CBuilder: 0
+  DynaLoader: 0
   ExtUtils::MakeMaker: 0
 dynamic_config: 1
 generated_by: 'ExtUtils::MakeMaker version 6.6302, CPAN::Meta::Converter version 2.120630'
@@ -26,4 +25,4 @@ requires:
   Config: 0
   Exporter: 0
   XSLoader: 0
-version: 0.05_01
+version: 0.05_02

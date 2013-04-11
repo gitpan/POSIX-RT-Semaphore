@@ -3,6 +3,12 @@ Revision history for Perl extension POSIX::RT::Semaphore.
 BV := Bijan Vakili <bvakili#oanda_com>
 ER := Eric Rybski <rybskej#yahoo_com>
 
+0.05_02 Wed Apr 10 22:41:52 2013
+  - version 0.05_02
+  - Simplify Makefile.PL probing for libraries, again favoring -lpthread.
+  - Check _POSIX_TIMEOUTS for sem_timedwait() and mov sem_unlink check to
+    cygwin-specific hint.
+
 0.05_01 Tue Apr 9 22:07:01 2013
   - version 0.05_01
   - correctness:  _SC_ constants' values were wrong.

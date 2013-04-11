@@ -6,7 +6,7 @@ use strict;
 our ($VERSION, @EXPORT_OK);
 
 BEGIN {
-$VERSION = '0.05_01';
+$VERSION = '0.05_02';
 require XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 
